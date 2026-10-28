@@ -1,0 +1,49 @@
+name: Build flashable module
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack project zip
+        run: |
+          mkdir -p src
+          for z in *.zip; do unzip -q -o "$z" -d src; done
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Accept Android SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: Create signing keystore
+        working-directory: src/android/app
+        run: >
+          keytool -genkeypair -keystore release.jks -storepass malachite -keypass malachite
+          -alias malachite -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Malachite Beast"
+
+      - name: Build APK
+        working-directory: src/android
+        run: gradle --no-daemon assembleRelease
+
+      - name: Package flashable module
+        run: |
+          mkdir -p src/module/app
+          cp src/android/app/build/outputs/apk/release/app-release.apk src/module/app/MalachiteBeast.apk
+          mkdir -p out
+          (cd src/module && zip -r -9 ../../out/Malachite_Beast_GPU_Governor_v1_8_1.zip . -x '.git*')
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Malachite_Beast_v1.8.1_flashable
+          path: out/Malachite_Beast_GPU_Governor_v1_8_1.zip
